@@ -18,3 +18,7 @@ infra/.build/
 metastore_db/
 derby.log
 spark-warehouse/
+.planning
+.coverage
+coverage.xml
+dist/
