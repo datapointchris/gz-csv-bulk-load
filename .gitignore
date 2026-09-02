@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+.mypy_cache/
+
+# Terraform — .terraform.lock.hcl is committed, so provider versions are pinned
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+infra/.build/
+
+# Spark leaves these behind after a local test run
+metastore_db/
+derby.log
+spark-warehouse/

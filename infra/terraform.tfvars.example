@@ -1,0 +1,18 @@
+aws_region = "us-east-1"
+
+landing_bucket  = "example-vendor-landing"
+lake_bucket     = "example-data-lake"
+artifact_bucket = "example-deploy-artifacts"
+
+# Size for the table with the most files. G.2X is 8 cores per worker and one
+# worker is the driver, so 3 workers gives 16 usable cores. A gzipped file is
+# one task on one core, so cores beyond the file count do nothing.
+glue_worker_type = "G.2X"
+glue_workers     = 3
+
+# At least the number of tables in schemas.py.
+max_concurrent_loads = 4
+
+tags = {
+  project = "gz-csv-bulk-load"
+}
