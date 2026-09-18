@@ -1,6 +1,4 @@
-# CLAUDE.md
-
-Guidance for Claude Code working in this repository.
+# gz-csv-bulk-load
 
 The README carries the design and the reasoning behind it. Read it before changing anything —
 in particular "Gzip decides the sizing, and nothing else does", which explains why the cluster is
@@ -72,7 +70,7 @@ code change ships with `terraform apply` and nothing else. There is no separate 
 `aws lambda update-function-code` path to reach for.
 
 Backend config is supplied at init time; the bucket, key and region are in the README's "Deploying"
-section. `terraform.tfvars` is gitignored — copy `terraform.tfvars.example` and edit it.
+section. `infra/terraform.tfvars` is gitignored — copy `infra/terraform.tfvars.example` and edit it.
 
 ## Failure posture
 
