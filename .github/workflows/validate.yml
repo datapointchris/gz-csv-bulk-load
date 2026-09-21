@@ -1,4 +1,4 @@
-# forge-toolchain: 26
+# forge-toolchain: 28
 name: CI
 
 on:
@@ -106,7 +106,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           tflint_version="0.64.0"
-          curl -fsSL -o "$RUNNER_TEMP/tflint.zip" \
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/tflint.zip" \
             "https://github.com/terraform-linters/tflint/releases/download/v${tflint_version}/tflint_linux_amd64.zip"
           unzip -o -q "$RUNNER_TEMP/tflint.zip" -d "$RUNNER_TEMP/tflint"
           tflint_bin="$RUNNER_TEMP/tflint/tflint"
@@ -120,7 +120,7 @@ jobs:
       - name: terraform-docs
         run: |
           terraform_docs_version="0.24.0"
-          curl -fsSL "https://github.com/terraform-docs/terraform-docs/releases/download/v${terraform_docs_version}/terraform-docs-v${terraform_docs_version}-linux-amd64.tar.gz" \
+          curl -fsSL --retry 3 "https://github.com/terraform-docs/terraform-docs/releases/download/v${terraform_docs_version}/terraform-docs-v${terraform_docs_version}-linux-amd64.tar.gz" \
             | tar -xzf - -C "$RUNNER_TEMP" terraform-docs
           terraform_docs_bin="$RUNNER_TEMP/terraform-docs"
           "$terraform_docs_bin" --version
