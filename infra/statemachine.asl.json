@@ -1,20 +1,20 @@
 {
   "Comment": "Check every vendor file's header, then load one table per Glue run.",
+  "QueryLanguage": "JSONata",
   "StartAt": "Preflight",
   "States": {
     "Preflight": {
       "Comment": "Reads the header of every object and compares it to schemas.py. A mismatch fails here, before any Glue cluster starts. Returns the table list for the fan-out and the one load_date every table writes into.",
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
-      "Parameters": {
+      "Arguments": {
         "FunctionName": "${preflight_function_arn}",
         "Payload": {}
       },
-      "ResultSelector": {
-        "tables.$": "$.Payload.tables",
-        "load_date.$": "$.Payload.load_date"
+      "Output": {
+        "tables": "{% $states.result.Payload.tables %}",
+        "load_date": "{% $states.result.Payload.load_date %}"
       },
-      "ResultPath": "$.preflight",
       "Retry": [
         {
           "ErrorEquals": [
@@ -34,11 +34,11 @@
     "LoadTables": {
       "Comment": "One Glue run per table. Parallelism inside a run comes from the file count, because a gzipped file cannot be split across tasks. Any table failing fails the whole execution: a partial load reporting success is worse than a red run.",
       "Type": "Map",
-      "ItemsPath": "$.preflight.tables",
-      "MaxConcurrency": ${max_concurrent_loads},
+      "Items": "{% $states.input.tables %}",
+      "MaxConcurrency": "{% ${max_concurrent_loads} %}",
       "ItemSelector": {
-        "table.$": "$$.Map.Item.Value",
-        "load_date.$": "$.preflight.load_date"
+        "table": "{% $states.context.Map.Item.Value %}",
+        "load_date": "{% $states.input.load_date %}"
       },
       "ItemProcessor": {
         "ProcessorConfig": {
@@ -50,11 +50,11 @@
             "Comment": "The Glue job caps concurrent runs at the same number as this Map's MaxConcurrency. A run rejected on that cap is a scheduling collision rather than a data fault, so it waits and retries instead of failing the execution.",
             "Type": "Task",
             "Resource": "arn:aws:states:::glue:startJobRun.sync",
-            "Parameters": {
+            "Arguments": {
               "JobName": "${glue_job_name}",
               "Arguments": {
-                "--table.$": "$.table",
-                "--load_date.$": "$.load_date"
+                "--table": "{% $states.input.table %}",
+                "--load_date": "{% $states.input.load_date %}"
               }
             },
             "Retry": [
