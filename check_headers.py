@@ -15,12 +15,11 @@ Returns the table names for the Step Functions Map to fan out over, and the
 `load_date` every table in the run writes into.
 """
 
+import datetime as dt
 import fnmatch
 import logging
 import os
 import zlib
-from datetime import UTC
-from datetime import datetime
 
 import boto3
 
@@ -236,5 +235,5 @@ def handler(event: dict, context: object) -> dict:
 
     return {
         'tables': list(schemas.TABLES),
-        'load_date': datetime.now(UTC).date().isoformat(),
+        'load_date': dt.datetime.now(dt.UTC).date().isoformat(),
     }
