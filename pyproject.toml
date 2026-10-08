@@ -13,7 +13,7 @@ dev = [
     "pyspark==3.5.4",               # matches Glue 5.0 exactly
     "boto3>=1.34",
     "pytest>=8.0",
-    "ruff",
+    "ruff==0.12.5",
 ]
 
 [tool.ruff]
@@ -111,3 +111,6 @@ managed = [
     ["pytest", "ini_options", "minversion"],
     ["pytest", "ini_options", "testpaths"],
 ]
+# Dependencies held at the version the pre-commit hook runs, in every group
+# and extra that names them, so a local run and CI cannot disagree.
+pinned = ["ruff"]
