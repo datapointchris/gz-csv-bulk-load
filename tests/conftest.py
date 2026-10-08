@@ -16,8 +16,8 @@ import pytest
 
 _awsglue = types.ModuleType('awsglue')
 _utils = types.ModuleType('awsglue.utils')
-_utils.getResolvedOptions = lambda argv, names: {}
-_awsglue.utils = _utils
+_utils.__dict__.update(getResolvedOptions=lambda argv, names: {})
+_awsglue.__dict__.update(utils=_utils)
 sys.modules.setdefault('awsglue', _awsglue)
 sys.modules.setdefault('awsglue.utils', _utils)
 
