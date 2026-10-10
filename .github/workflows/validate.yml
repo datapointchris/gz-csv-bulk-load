@@ -18,6 +18,16 @@ jobs:
 
       - uses: actions/checkout@v7
 
+      # > custom:before:python - Java 17, the release Glue 5.0 runs Spark on
+      # pyspark 3.5.4 starts Hadoop's login code, which calls
+      # Subject.getSubject, and Java 24 removed it. The runner image's default
+      # Java is newer than that, so without this every Spark test fails to
+      # create its context.
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
       # generated:python
       # enable-cache is left at setup-uv's `auto`, which caches on a hosted
       # runner only. Every repo's self-hosted runner shares one ~/.cache/uv
