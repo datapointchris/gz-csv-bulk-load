@@ -1,4 +1,4 @@
-# forge-toolchain: 37
+# forge-toolchain: 38
 fail_fast: true
 default_stages: [pre-commit]
 repos:
@@ -226,9 +226,45 @@ repos:
     rev: v1.99.5
     hooks:
       - id: terraform_validate
-      - id: terraform_tflint
       - id: terraform_fmt
-      - id: terraform_docs
-        args:
-          - --args=--anchor=false
-          - --args=--html=false
+
+# generated:terraform-lint-and-docs - Terraform lint and module docs, at the release CI installs
+  # pre-commit installs each tool into an environment of its own, from the
+  # module and version below, which is the release generated CI downloads. A
+  # hook running the copy on PATH passes or fails by what that machine last
+  # installed.
+  #
+  # One pair per declared Terraform directory, run from it, the same as the CI
+  # job. Filenames are never passed, so files: only decides whether it runs.
+  - repo: local
+    hooks:
+      # --init installs the plugins a .tflint.hcl names. With none named it
+      # reads nothing from the network.
+      - id: tflint
+        name: tflint
+        entry: bash -c 'cd infra && tflint --init && exec tflint --recursive'
+        language: golang
+        additional_dependencies:
+          - github.com/terraform-linters/tflint@v0.64.0
+        pass_filenames: false
+        types: [terraform]
+        files: '^infra/'
+
+      # Writes only into a README.md already holding the begin marker, so a
+      # module nobody documents is left alone. md, --anchor=false and
+      # --html=false are what the CI step checks against.
+      - id: terraform-docs
+        name: terraform-docs
+        entry: >-
+          bash -c 'cd infra || exit 1; status=0;
+          for readme in $(git ls-files README.md "*/README.md"); do
+          grep -q "<!-- BEGIN_TF_DOCS -->" "$readme" || continue;
+          terraform-docs md --output-file README.md --output-mode inject
+          --anchor=false --html=false "$(dirname "$readme")" || status=1;
+          done; exit "$status"'
+        language: golang
+        additional_dependencies:
+          - github.com/terraform-docs/terraform-docs@v0.24.0
+        pass_filenames: false
+        types: [terraform]
+        files: '^infra/'

@@ -1,4 +1,4 @@
-# forge-toolchain: 37
+# forge-toolchain: 38
 name: CI
 
 on:
@@ -101,9 +101,10 @@ jobs:
       # "0 passed, 0 failed", so a repo without tests is unaffected.
       - run: terraform test
 
-      # The hook runs whichever tflint a workstation has, so the pin is the
-      # versions file's own. --init installs the plugins a .tflint.hcl names,
-      # from GitHub, which rate-limits a runner that does not authenticate.
+      # The release is the one the tflint hook installs as a Go module, read
+      # from the same pin. A release download needs no Go on the runner.
+      # --init installs the plugins a .tflint.hcl names, from GitHub, which
+      # rate-limits a runner that does not authenticate.
       - name: tflint
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -117,9 +118,10 @@ jobs:
           "$tflint_bin" --init
           "$tflint_bin" --recursive
 
-      # The terraform_docs hook writes only into a README.md already holding
+      # The terraform-docs hook writes only into a README.md already holding
       # its begin marker, so only those are checked. md, --anchor=false and
-      # --html=false are the formatter and arguments the hook passes.
+      # --html=false are the formatter and arguments the hook passes, and the
+      # release is the one it installs.
       - name: terraform-docs
         run: |
           terraform_docs_version="0.24.0"
