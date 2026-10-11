@@ -13,6 +13,7 @@ import sys
 import types
 
 import pytest
+from pyspark.sql import SparkSession
 
 _awsglue = types.ModuleType('awsglue')
 _utils = types.ModuleType('awsglue.utils')
@@ -31,7 +32,6 @@ def spark():
     Yields:
         The session, stopped when the test session ends.
     """
-    from pyspark.sql import SparkSession
 
     session = (
         SparkSession.builder.appName('gz-csv-bulk-load-tests')
