@@ -15,12 +15,12 @@ import types
 import pytest
 from pyspark.sql import SparkSession
 
-_awsglue = types.ModuleType('awsglue')
-_utils = types.ModuleType('awsglue.utils')
-_utils.__dict__.update(getResolvedOptions=lambda argv, names: {})
-_awsglue.__dict__.update(utils=_utils)
-sys.modules.setdefault('awsglue', _awsglue)
-sys.modules.setdefault('awsglue.utils', _utils)
+awsglue = types.ModuleType('awsglue')
+awsglue_utils = types.ModuleType('awsglue.utils')
+awsglue_utils.__dict__.update(getResolvedOptions=lambda argv, names: {})
+awsglue.__dict__.update(utils=awsglue_utils)
+sys.modules.setdefault('awsglue', awsglue)
+sys.modules.setdefault('awsglue.utils', awsglue_utils)
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
