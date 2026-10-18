@@ -37,7 +37,8 @@ class Table:
     Attributes:
         name: Catalog table name, and the `--table` argument the Glue job takes.
         prefix: Key prefix under the landing bucket, trailing slash included.
-        pattern: Glob matching this table's objects beneath `prefix`.
+        pattern: Glob matching this table's objects beneath `prefix`, in the
+            Hadoop syntax Spark resolves, so `*` stops at a `/`.
         columns: The vendor's header, in order. Every column loads as a string —
             coercion belongs downstream, where a bad value can be quarantined
             instead of failing a read that has already run for twenty minutes.

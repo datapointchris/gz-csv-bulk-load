@@ -8,6 +8,10 @@ Every file is checked, not one per table. The failure that reaches the warehouse
 otherwise is a vendor changing the header partway through a drop, where the first
 file is fine and the fourth is not.
 
+A table's files are the ones the Glue job's read takes in, judged by Hadoop's glob
+and Spark's name filter in `spark_reads`. Python's `fnmatch` lets `*` cross a `/`,
+so it would check files the read never touches.
+
 The whole report is assembled before anything is raised, so a run with three
 broken tables is fixed in one pass rather than three.
 
@@ -16,9 +20,10 @@ Returns the table names for the Step Functions Map to fan out over, and the
 """
 
 import datetime as dt
-import fnmatch
+import itertools
 import logging
 import os
+import re
 import zlib
 
 import boto3
@@ -135,11 +140,147 @@ def sizing_note(table_name: str, file_count: int, worker_type: str, workers: int
     return f'{table_name}: {file_count} files, {cores} cores available — matched'
 
 
+# ---------------------------------------------------------------- what Spark reads
+
+
+def expand_braces(glob: str) -> list[str]:
+    """Expand every `{a,b}` group in a glob into the globs it stands for.
+
+    Hadoop expands a group before it splits the glob on `/`, so a group may hold
+    a `/`. Expanding every group first selects the same paths. Nested groups
+    expand too, and a brace after `\\` stays literal.
+
+    Args:
+        glob: A Hadoop glob.
+
+    Returns:
+        Globs with no groups left, which together match what `glob` matches.
+
+    Raises:
+        ValueError: If a `{` is never closed.
+    """
+    depth = 0
+    cuts: list[int] = []
+    position = 0
+    while position < len(glob):
+        char = glob[position]
+        if char == '\\':
+            position += 1
+        elif char == '{':
+            depth += 1
+            if depth == 1:
+                cuts = [position]
+        elif char == ',' and depth == 1:
+            cuts.append(position)
+        elif char == '}' and depth:
+            depth -= 1
+            if depth == 0:
+                head, tail = glob[: cuts[0]], glob[position + 1 :]
+                cuts.append(position)
+                return [
+                    expanded for start, end in itertools.pairwise(cuts) for expanded in expand_braces(head + glob[start + 1 : end] + tail)
+                ]
+        position += 1
+    if depth:
+        raise ValueError(f'Unclosed {{ in glob {glob!r}')
+    return [glob]
+
+
+def component_pattern(component: str) -> re.Pattern[str]:
+    """Compile one path component of a Hadoop glob.
+
+    `*` and `?` match within the component, so neither crosses a `/`. `[...]` is
+    a character class, negated by a leading `!` or `^`. `\\` makes the next
+    character literal.
+
+    Args:
+        component: One `/`-free piece of a glob whose groups are expanded.
+
+    Returns:
+        A pattern to `fullmatch` against one piece of a key.
+
+    Raises:
+        ValueError: If a `[` is never closed, or a `\\` ends the component.
+    """
+    regex = []
+    position = 0
+    while position < len(component):
+        char = component[position]
+        if char == '\\':
+            position += 1
+            if position == len(component):
+                raise ValueError(f'Nothing follows the \\ in glob component {component!r}')
+            regex.append(re.escape(component[position]))
+        elif char == '*':
+            regex.append('.*')
+        elif char == '?':
+            regex.append('.')
+        elif char == '[':
+            # A `]` straight after the `[` is a member of the class, not its end.
+            close = component.find(']', position + 2)
+            if close == -1:
+                raise ValueError(f'Unclosed [ in glob component {component!r}')
+            members = component[position + 1 : close]
+            regex.append(f'[^{members[1:]}]' if members.startswith('!') else f'[{members}]')
+            position = close
+        else:
+            regex.append(re.escape(char))
+        position += 1
+    return re.compile(''.join(regex), re.DOTALL)
+
+
+def spark_skips(name: str) -> bool:
+    """Say whether Spark leaves a file or directory out of a read by its name.
+
+    A name starting with `_` or `.` is skipped, which drops `_SUCCESS` markers
+    and hidden temporary files. So is a name ending `._COPYING_`, a copy still in
+    flight. A `_` name holding `=` is a partition directory, and it stays.
+
+    Args:
+        name: One piece of a key.
+
+    Returns:
+        True when Spark skips it.
+    """
+    return (name.startswith('_') and '=' not in name) or name.startswith('.') or name.endswith('._COPYING_')
+
+
+def spark_reads(key: str, glob: str) -> bool:
+    """Say whether Spark's read of `glob` takes in the object at `key`.
+
+    Hadoop matches a glob one path component at a time. A match on a directory
+    takes in everything beneath it. Spark then drops whatever `spark_skips`
+    names: the matched file itself, or any file or directory below a matched
+    directory.
+
+    Args:
+        key: An object key.
+        glob: The glob the Spark read is given, relative to the same bucket.
+
+    Returns:
+        True when the read takes the object in.
+    """
+    if key.endswith('/'):
+        # A folder marker. Spark lists it as a directory, and it holds no rows.
+        return False
+    parts = key.split('/')
+    for expanded in expand_braces(glob):
+        patterns = [component_pattern(component) for component in expanded.split('/')]
+        if len(parts) < len(patterns):
+            continue
+        if not all(pattern.fullmatch(part) for pattern, part in zip(patterns, parts, strict=False)):
+            continue
+        filtered = parts[len(patterns) :] or parts[-1:]
+        if not any(spark_skips(name) for name in filtered):
+            return True
+    return False
+
+
 # ---------------------------------------------------------------- impure
 
 
 def list_table_objects(s3, bucket: str, table: schemas.Table) -> list[str]:
-    """List every object belonging to one table.
+    """List every object the Glue job's read of one table takes in.
 
     Args:
         s3: An S3 client.
@@ -151,7 +292,7 @@ def list_table_objects(s3, bucket: str, table: schemas.Table) -> list[str]:
     """
     keys: list[str] = []
     for page in s3.get_paginator('list_objects_v2').paginate(Bucket=bucket, Prefix=table.prefix):
-        keys.extend(item['Key'] for item in page.get('Contents', ()) if fnmatch.fnmatch(item['Key'], table.source_glob))
+        keys.extend(item['Key'] for item in page.get('Contents', ()) if spark_reads(item['Key'], table.source_glob))
     return sorted(keys)
 
 

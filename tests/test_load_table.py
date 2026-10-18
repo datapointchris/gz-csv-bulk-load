@@ -7,7 +7,9 @@ is a slow place to discover that.
 """
 
 import pytest
+from pyspark.sql import functions as sf
 
+import check_headers
 import load_table
 import schemas
 
@@ -100,6 +102,26 @@ def test_reads_several_gzipped_files_as_one_frame(spark, gz_csv, tmp_path):
 
     assert frame.columns == list(TABLE.catalog_columns)
     assert sorted(row.widget_id for row in frame.collect()) == ['w1', 'w2']
+
+
+def test_the_preflight_checks_exactly_the_files_the_read_takes_in(spark, gz_csv, tmp_path):
+    """A file read unchecked loads a header nobody compared. A file checked but never read fails a good drop."""
+    layout = [
+        'widgets_csv000.gz',
+        'widgets_csv/nested.gz',
+        'widgets_csv001.gz/part.gz',
+        'widgets_csv001.gz/_partial.gz',
+        'widgets_csv001.gz/.hidden.gz',
+    ]
+    for key in layout:
+        (tmp_path / key).parent.mkdir(parents=True, exist_ok=True)
+        gz_csv(key, [HEADER, 'w1,bolt,1.50'])
+
+    frame = load_table.read_csv(spark, TABLE, str(tmp_path / TABLE.pattern))
+    read = {row.path.removeprefix(f'file://{tmp_path}/') for row in frame.select(sf.input_file_name().alias('path')).collect()}
+
+    assert read == {'widgets_csv000.gz', 'widgets_csv001.gz/part.gz'}
+    assert {key for key in layout if check_headers.spark_reads(key, TABLE.pattern)} == read
 
 
 def test_values_stay_verbatim_as_strings(spark, gz_csv, tmp_path):
