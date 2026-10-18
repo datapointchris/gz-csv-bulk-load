@@ -66,7 +66,8 @@ variable "max_concurrent_loads" {
   description = <<-EOT
     Tables loaded at once. Caps the Step Functions Map and the Glue job's concurrent runs
     together — if the Map were wider than the job allows, the extra iterations would fail
-    with ConcurrentRunsExceededException. Must be at least the number of tables in schemas.py.
+    with ConcurrentRunsExceededException. Set it to the number of tables in schemas.py to load
+    them all at once; with fewer, the extra tables wait for a slot.
   EOT
   type        = number
   default     = 4

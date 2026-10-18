@@ -69,8 +69,8 @@ Terraform uploads `load_table.py` and `schemas.py` to the artifact bucket and zi
 code change ships with `terraform apply` and nothing else. There is no separate deploy step, and no
 `aws lambda update-function-code` path to reach for.
 
-Backend config is supplied at init time; the bucket, key and region are in the README's "Deploying"
-section. `infra/terraform.tfvars` is gitignored — copy `infra/terraform.tfvars.example` and edit it.
+Backend config is supplied at init time; the bucket, key and region are in the README's "Starting
+from scratch" section. `infra/terraform.tfvars` is gitignored — copy `infra/terraform.tfvars.example` and edit it.
 
 ## Failure posture
 
