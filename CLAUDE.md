@@ -15,69 +15,48 @@ infra/              Terraform. hand-written, no generation from schemas.py
 tests/              runs locally, no AWS
 ```
 
-Adding a table is two edits, in this order: a `Table` appended to `TABLES` in `schemas.py`, then an
-`aws_glue_catalog_table` in `infra/catalog.tf` with the same columns plus `_corrupt_record`,
-partitioned by `load_date`. The Step Functions fan-out reads `TABLES` at runtime, so nothing else
-needs widening.
+Adding a table follows the README's "Adding a table is two edits, and the fan-out follows". That
+section also names the hand-written `table_locations` output in `infra/outputs.tf`, which a new
+table needs an entry in.
 
-## The column list is duplicated on purpose
+## Every AWS call has one door
 
-`schemas.py` and `infra/catalog.tf` both name every column, and nothing generates one from the
-other. They answer different questions. Terraform describes the target table; `schemas.py` describes
-the header the vendor must send. The two diverge the moment a column is renamed on the way in.
+Anything that leaves the process goes through one of these functions. A new call goes inside the
+door for its service, never beside it.
 
-`check_catalog` compares them on every run, so drift fails a load rather than corrupting a table.
-Do not add a generator to remove the duplication — the comparison catches more than a build step
-would, and needs no build step.
+- **The landing bucket, from the Lambda.** `check_headers.handler` creates the only S3 client and
+  passes it down. `list_table_objects` lists a table's keys, and `read_header` makes the one ranged
+  GET per object.
+- **The Glue Catalog, read.** `load_table.main` creates the only Glue client and passes it to
+  `check_catalog`, which makes the one `get_table` call.
+- **The Glue Catalog, written.** `register_partition` runs the job's only `spark.sql`, the
+  `ALTER TABLE ... ADD IF NOT EXISTS PARTITION`.
+- **S3 through Spark.** `read_csv` reads the vendor files, `write_partition` writes the Parquet, and
+  `count_corrupt` reads that partition back.
 
-## The contract is never read from the catalog
-
-`schemas.py` is the thing a header is validated against. The Glue Catalog is written from it and
-compared to it, never read to decide whether a load is valid. The catalog does not exist in a fresh
-environment, it is mutable from the console and by crawlers, and reading it needs credentials that
-CI and a laptop do not have.
-
-## Everything loads as a string
-
-The requirement is to fail on new or missing columns, which is a name check. Types add nothing to
-it and remove a class of silent loss: `N/A`, `(500)`, a leading zero and a thousands separator all
-survive as text but not as a cast. Typing belongs in whatever reads these tables.
+No other function creates a boto3 client or runs `spark.sql`. A new external effect gets one
+wrapper of its own, named here.
 
 ## Tests
 
 ```bash
-uv venv && uv pip install -e '.[dev]'
-.venv/bin/python -m pytest
+task setup    # once
+task test     # pytest, then terraform test in infra/
 ```
 
-`awsglue` exists only inside a running Glue job, so `tests/conftest.py` registers a stub module
-before `load_table` is imported. Anything importing `load_table` outside that fixture set will fail
-on that line.
+The README's "Tests run without AWS, and the Spark ones need a JDK 17" covers the JDK and what the
+Spark tests prove. `tests/conftest.py` registers the `awsglue` stub before `load_table` is
+imported, so anything importing `load_table` outside those fixtures fails on that line.
 
-The tests using the `spark` fixture need a JDK 17 on the path, matching what Glue 5.0 runs. Without
-one they error with `JAVA_GATEWAY_EXITED` rather than failing an assertion. CI provides a JDK; a
-machine without one will see those tests error and the rest pass.
+## Decisions a change must not undo in passing
 
-**Those Spark tests are the point, not ceremony.** `escape`, `enforceSchema` and `mode` all fail
-silently when they are wrong — a misconfigured reader returns a DataFrame rather than raising, so
-the damage shows up as bad data much later. The tests prove the reader options against real gzipped
-files, which is far cheaper than finding out inside a deployed run.
+Each is argued in the README section named beside it.
 
-## Deploying
-
-Terraform uploads `load_table.py` and `schemas.py` to the artifact bucket and zips the Lambda, so a
-code change ships with `terraform apply` and nothing else. There is no separate deploy step, and no
-`aws lambda update-function-code` path to reach for.
-
-Backend config is supplied at init time; the bucket, key and region are in the README's "Starting
-from scratch" section. `infra/terraform.tfvars` is gitignored — copy `infra/terraform.tfvars.example` and edit it.
-
-## Failure posture
-
-Any table failing fails the whole execution. A partial load reporting success is worse than a red
-run, so do not add per-table error swallowing to keep an execution green.
-
-`check_catalog` fails when a table is absent and does not create it. A missing table is an
-infrastructure fault, and creating it here would turn a wrong `--database` into a run that
-succeeds against a table nobody reads. `register_partition` does use `ADD IF NOT EXISTS`, which is
-a different case — a partition already existing is what a retry looks like.
+- No generator between `schemas.py` and `infra/catalog.tf`. `check_catalog` compares the two on
+  every run. See "Adding a table is two edits, and the fan-out follows".
+- Never read the Glue Catalog to decide whether a load is valid. See "`schemas.py` is the contract,
+  and the Glue Catalog never is".
+- No types on the columns. See "Everything loads as a string".
+- No per-table error swallowing, and `check_catalog` never creates a missing table. See "Any table
+  failing fails the run, and nothing retries a load".
+- No deploy path besides `terraform apply`. See "Starting from scratch".
