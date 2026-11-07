@@ -1,7 +1,9 @@
 """The header check is the only gate between a vendor change and the warehouse.
 
-Everything here runs against the pure half — inflating a header, splitting it, and
-describing a difference. The S3 half is three boto3 calls with no logic in them.
+These tests cover the functions with no S3 in them: inflating a header, parsing
+it by CSV's grammar, comparing it to the contract, and sizing the cluster. Which
+listed keys a table's check takes in is decided by `spark_reads`, and the Spark
+tests in test_load_table.py compare that against what a real read takes in.
 """
 
 import gzip
