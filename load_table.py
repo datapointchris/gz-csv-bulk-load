@@ -36,6 +36,12 @@ otherwise becomes one multi-gigabyte object, because one input file is one task
 and one task writes one file per partition. This rolls without a shuffle, which
 `repartition` would not."""
 
+RESTORE_TABLE = (
+    'Run terraform apply from infra/ to restore the declared table, or update schemas.py and '
+    'infra/catalog.tf together if the change was intended.'
+)
+"""The remedy every drifted-table error ends with."""
+
 
 def build_session(app: str) -> SparkSession:
     """Return the session, configured for a shuffle-free partition replace.
@@ -95,7 +101,8 @@ def check_catalog(glue, database: str, table: schemas.Table) -> None:
         raise RuntimeError(
             f'Catalog table {database}.{table.name} does not exist.\n'
             f'This job will not create it. Either --database is wrong, or the table '
-            f'was dropped and that is an incident. Check the deployed infrastructure.'
+            f'was dropped and that is an incident. Run terraform apply from infra/ to '
+            f'create the declared table.'
         ) from err
 
     live_columns = tuple(column['Name'] for column in live['StorageDescriptor']['Columns'])
@@ -104,13 +111,14 @@ def check_catalog(glue, database: str, table: schemas.Table) -> None:
             f'Catalog table {database}.{table.name} does not match schemas.py.\n'
             f'  catalog:    {live_columns}\n'
             f'  schemas.py: {table.catalog_columns}\n'
-            f'Something changed the table outside this pipeline.'
+            f'Something changed the table outside this pipeline. {RESTORE_TABLE}'
         )
 
     live_partitions = tuple(key['Name'] for key in live.get('PartitionKeys', ()))
     if live_partitions != (schemas.PARTITION_COLUMN,):
         raise ValueError(
-            f'Catalog table {database}.{table.name} is partitioned by {live_partitions}, expected ({schemas.PARTITION_COLUMN!r},).'
+            f'Catalog table {database}.{table.name} is partitioned by {live_partitions}, '
+            f'expected ({schemas.PARTITION_COLUMN!r},). {RESTORE_TABLE}'
         )
 
 
