@@ -45,6 +45,10 @@ def test_parse_header_line_strips_quotes_and_spaces():
     assert check_headers.parse_header_line(b'"a", "b" ,c', **DIALECT) == ('a', 'b', 'c')
 
 
+def test_parse_header_line_keeps_a_quoted_delimiter_in_one_column():
+    assert check_headers.parse_header_line(b'"a,x",b', **DIALECT) == ('a,x', 'b')
+
+
 def test_parse_header_line_strips_a_byte_order_mark():
     """A BOM decodes into the first name and would read as a rename, not as an encoding fault."""
     assert check_headers.parse_header_line('﻿a,b,c'.encode(), **DIALECT) == ('a', 'b', 'c')

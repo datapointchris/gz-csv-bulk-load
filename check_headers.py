@@ -19,6 +19,7 @@ Returns the table names for the Step Functions Map to fan out over, and the
 `load_date` every table in the run writes into.
 """
 
+import csv
 import datetime as dt
 import itertools
 import logging
@@ -66,7 +67,10 @@ def first_line(compressed: bytes) -> bytes:
 
 
 def parse_header_line(line: bytes, encoding: str, delimiter: str, quote: str) -> tuple[str, ...]:
-    """Split a header line into column names.
+    """Split a header line into column names, by CSV's own grammar.
+
+    A quoted name may hold the delimiter, and a doubled quote inside one is a
+    literal quote, as RFC 4180 and the Spark read both have it.
 
     A byte-order mark decodes into the first column name and would fail the
     comparison as `﻿order_id` rather than as a real mismatch, so it is
@@ -76,13 +80,14 @@ def parse_header_line(line: bytes, encoding: str, delimiter: str, quote: str) ->
         line: The raw header line.
         encoding: Text encoding the vendor writes.
         delimiter: Field separator.
-        quote: Quote character, stripped from each field when present.
+        quote: Quote character.
 
     Returns:
         Column names, in file order.
     """
     text = line.decode(encoding).lstrip('﻿')
-    return tuple(field.strip().strip(quote) for field in text.split(delimiter))
+    fields = next(csv.reader([text], delimiter=delimiter, quotechar=quote, doublequote=True, skipinitialspace=True), [])
+    return tuple(field.strip() for field in fields)
 
 
 def describe_mismatch(expected: tuple[str, ...], actual: tuple[str, ...]) -> str | None:
