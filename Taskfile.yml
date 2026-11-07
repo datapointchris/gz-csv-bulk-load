@@ -1,0 +1,40 @@
+version: '3'
+
+tasks:
+  default:
+    desc: List the tasks
+    silent: true
+    cmds:
+      - task --list
+
+  setup:
+    desc: Install the dev tools into .venv, with pyspark at the version Glue runs
+    cmds:
+      - uv sync --all-extras
+
+  # The Spark tests need a JDK 17 on the path. Without one they error with
+  # JAVA_GATEWAY_EXITED and the rest pass.
+  test:
+    desc: Run the Python suite, then the Terraform tests in infra/ with no AWS
+    cmds:
+      - uv run --all-extras pytest
+      - terraform -chdir=infra init -backend=false -input=false
+      - terraform -chdir=infra test
+
+  lint:
+    desc: Run ruff, the format check and the type check, writing no file
+    cmds:
+      - uv run --all-extras ruff check .
+      - uv run --all-extras ruff format --check .
+      - task: typecheck
+
+  format:
+    desc: Apply ruff's formatting and its autofixes
+    cmds:
+      - uv run --all-extras ruff format .
+      - uv run --all-extras ruff check --fix .
+
+  typecheck:
+    desc: Type-check the Python with mypy
+    cmds:
+      - uv run --all-extras mypy .

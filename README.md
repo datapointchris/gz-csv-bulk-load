@@ -17,8 +17,10 @@ account, and a JDK 17 for the Spark tests.
 
 ```bash
 git clone https://github.com/datapointchris/gz-csv-bulk-load.git && cd gz-csv-bulk-load
-uv sync --all-extras    # the dev tools into .venv, with pyspark at the version Glue runs
+task setup    # the dev tools into .venv, with pyspark at the version Glue runs
 ```
+
+`task --list` names the rest: `test`, `lint`, `format` and `typecheck`.
 
 ## Starting from scratch
 
@@ -27,7 +29,7 @@ the landing bucket the vendor drops into, the lake bucket the Parquet goes to, a
 bucket the job is uploaded to.
 
 ```bash
-uv run pytest                                  # proves the CSV reader options on real gzipped files, no AWS
+task test                                      # proves the CSV reader options on real gzipped files, no AWS
 cd infra
 terraform init \
   -backend-config="bucket=<state-bucket>" \
