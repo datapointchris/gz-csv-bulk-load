@@ -1,15 +1,12 @@
 """Load one table's gzipped CSV files into the lake.
 
-Gzip is not splittable. Spark reads each `.gz` object with exactly one task on
-one core, start to finish, so a table's useful cluster width is its file count
-and its wall clock is bounded below by its largest single file. Nothing here
-repartitions, sorts or joins — the read streams straight into the Parquet writer
-and the job never shuffles.
+Each `.gz` object is read by one task on one core. Nothing here repartitions,
+sorts or joins — the read streams straight into the Parquet writer and the job
+never shuffles. The README's "Gzip decides the sizing, and nothing else does"
+says what that means for the cluster and why `inferSchema` stays off.
 
-Every column loads as a string. Type coercion belongs downstream, where a bad
-value can be quarantined instead of failing a read that has already run for
-twenty minutes. `inferSchema` is worse still: inference is a second pass over the
-data, and against an unsplittable file that doubles the single-threaded time.
+Every column loads as a string, for the reasons the README's "Everything loads
+as a string" gives.
 
 The catalog table is not created here. It is deployed by Terraform, and this job
 fails if it is absent — see `check_catalog`.

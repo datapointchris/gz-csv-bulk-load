@@ -3,13 +3,10 @@
 # wrong --database surfaces as a red run in seconds instead of as a silent load
 # into a table nobody reads.
 #
-# The column lists here also appear in schemas.py. That duplication is deliberate
-# and nothing generates one from the other. The two answer different questions —
-# this describes the target table, including the corrupt-record column and the
-# partition key, while schemas.py describes the header the vendor must send. They
-# diverge properly once a column is renamed on the way in or given a real type.
-# load_table.check_catalog compares them on every single run, which is a stronger
-# guarantee than a generator and needs no build step.
+# The column lists here repeat schemas.py on purpose, plus _corrupt_record and the
+# load_date partition key. load_table.check_catalog compares the two on every run.
+# The README's "Adding a table is two edits, and the fan-out follows" says why
+# nothing generates one from the other.
 
 resource "aws_glue_catalog_database" "raw" {
   name        = var.database_name

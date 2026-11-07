@@ -3,19 +3,14 @@
 This module is the contract. A file's header must match its table's `columns`
 exactly and in order, or the run fails before any compute starts.
 
-The contract lives here rather than in the Glue Catalog for three reasons. The
-catalog does not exist until infrastructure is deployed, so a new environment
-would have nothing to check against. The catalog is mutable from the console and
-by crawlers, so a contract stored there can be changed without review. And
-reading it needs AWS credentials, which puts the check out of reach of CI and of
-a laptop.
-
 The catalog is written from this list and compared against it on every load. It
-is never read to decide whether a load is valid.
+is never read to decide whether a load is valid. The README's "`schemas.py` is
+the contract, and the Glue Catalog never is" gives the reasons.
 
-Adding a table is a `Table` below plus an `aws_glue_catalog_table` resource in
-`infra/catalog.tf`. Nothing else moves — the Step Functions fan-out reads
-`TABLES` at runtime, so its width follows automatically.
+Adding a table is a `Table` below plus the Terraform the README's "Adding a
+table is two edits, and the fan-out follows" lists, which includes the
+hand-written `table_locations` output. The Step Functions fan-out reads `TABLES`
+at runtime, so its width follows on its own.
 """
 
 from dataclasses import dataclass
@@ -39,9 +34,9 @@ class Table:
         prefix: Key prefix under the landing bucket, trailing slash included.
         pattern: Glob matching this table's objects beneath `prefix`, in the
             Hadoop syntax Spark resolves, so `*` stops at a `/`.
-        columns: The vendor's header, in order. Every column loads as a string —
-            coercion belongs downstream, where a bad value can be quarantined
-            instead of failing a read that has already run for twenty minutes.
+        columns: The vendor's header, in order. Every column loads as a
+            string, for the reasons the README's "Everything loads as a
+            string" gives.
     """
 
     name: str

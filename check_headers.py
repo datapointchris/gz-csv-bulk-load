@@ -41,8 +41,8 @@ GZIP_WINDOW_BITS = 47
 bare DEFLATE stream. 15 is the maximum window; 15 + 32 is the documented idiom."""
 
 CORES_PER_WORKER = {'G.1X': 4, 'G.2X': 8, 'G.4X': 16, 'G.8X': 32}
-"""Used only to warn about sizing. One .gz file is one Spark task on one core for
-its whole life, so a table's useful width is its file count and nothing more."""
+"""Used only for the sizing line the check logs. The README's "Gzip decides the
+sizing, and nothing else does" says why file count against cores is the measure."""
 
 
 # ---------------------------------------------------------------- pure

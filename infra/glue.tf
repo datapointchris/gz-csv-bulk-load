@@ -58,9 +58,9 @@ resource "aws_glue_job" "load_table" {
     # check decides that here, and it says so out loud.
     "--job-bookmark-option" = "job-bookmark-disable"
 
-    # Autoscaling cannot help. One gzipped file is one task on one core from
-    # start to finish, so the useful width is fixed by the file count before the
-    # job begins and extra executors would sit idle.
+    # Autoscaling cannot help, because the file count fixes the useful width
+    # before the job begins. See the README's "Gzip decides the sizing, and
+    # nothing else does".
     "--enable-auto-scaling" = "false"
 
     "--enable-metrics"                   = "true"
