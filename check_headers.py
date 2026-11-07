@@ -19,6 +19,7 @@ Returns the table names for the Step Functions Map to fan out over, and the
 `load_date` every table in the run writes into.
 """
 
+import collections
 import csv
 import datetime as dt
 import itertools
@@ -26,6 +27,7 @@ import logging
 import os
 import re
 import zlib
+from dataclasses import dataclass
 
 import boto3
 
@@ -90,59 +92,138 @@ def parse_header_line(line: bytes, encoding: str, delimiter: str, quote: str) ->
     return tuple(field.strip() for field in fields)
 
 
-def describe_mismatch(expected: tuple[str, ...], actual: tuple[str, ...]) -> str | None:
-    """Explain how a file's header differs from the contract.
+@dataclass(frozen=True)
+class Reorder:
+    """The first position where a header's order disagrees with the contract.
+
+    Attributes:
+        position: Column number, counting from 1.
+        found: The name the file has there.
+        expected: The name the contract has there.
+    """
+
+    position: int
+    found: str
+    expected: str
+
+
+@dataclass(frozen=True)
+class HeaderMismatch:
+    """How a file's header differs from the contract.
+
+    Attributes:
+        missing: Contract columns the file lacks, in contract order.
+        extra: File columns the contract does not name, in file order.
+        duplicated: Names the file carries more than once, in file order.
+        reordered: Set only when the names agree and their order does not. A
+            positional load would put every column after it in the wrong place.
+    """
+
+    missing: tuple[str, ...] = ()
+    extra: tuple[str, ...] = ()
+    duplicated: tuple[str, ...] = ()
+    reordered: Reorder | None = None
+
+    def describe(self) -> str:
+        """Render the mismatch for a person to act on.
+
+        Returns:
+            One line per kind of difference the file has.
+        """
+        lines = []
+        if self.missing:
+            lines.append(f'missing:    {", ".join(self.missing)}')
+        if self.extra:
+            lines.append(f'extra:      {", ".join(self.extra)}')
+        if self.duplicated:
+            lines.append(f'duplicated: {", ".join(self.duplicated)}')
+        if self.reordered is not None:
+            reorder = self.reordered
+            lines.append(f'reordered:  column {reorder.position} is {reorder.found!r}, the contract says {reorder.expected!r}')
+        return '\n'.join(lines)
+
+
+def header_mismatch(expected: tuple[str, ...], actual: tuple[str, ...]) -> HeaderMismatch | None:
+    """Compare a file's header to the contract.
 
     Args:
         expected: Column names from `schemas`.
         actual: Column names read from the file.
 
     Returns:
-        A message a person can act on, or None when the header matches exactly.
+        Every difference found, or None when the header matches exactly.
     """
     if expected == actual:
         return None
 
-    missing = [column for column in expected if column not in actual]
-    extra = [column for column in actual if column not in expected]
+    counts = collections.Counter(actual)
+    missing = tuple(column for column in expected if column not in counts)
+    extra = tuple(column for column in counts if column not in expected)
+    duplicated = tuple(column for column, count in counts.items() if count > 1)
+    if missing or extra or duplicated:
+        return HeaderMismatch(missing=missing, extra=extra, duplicated=duplicated)
 
-    if missing or extra:
-        lines = []
-        if missing:
-            lines.append(f'missing: {", ".join(missing)}')
-        if extra:
-            lines.append(f'extra:   {", ".join(extra)}')
-        return '\n'.join(lines)
-
-    # Same names, different order. Report the first position that disagrees —
-    # a positional load would put every subsequent column in the wrong place.
+    # Same names, each once, so the two tuples have one length and differ in order.
     for position, (want, got) in enumerate(zip(expected, actual, strict=True), start=1):
         if want != got:
-            return f'reordered: column {position} is {got!r}, the contract says {want!r}'
-
+            return HeaderMismatch(reordered=Reorder(position=position, found=got, expected=want))
     return None
 
 
-def sizing_note(table_name: str, file_count: int, worker_type: str, workers: int) -> str:
+@dataclass(frozen=True)
+class Sizing:
+    """A table's file count against the cores the cluster will offer.
+
+    Attributes:
+        files: Objects matched for the table.
+        cores: Executor cores, or 0 when the worker type is unknown.
+    """
+
+    files: int
+    cores: int
+
+    @property
+    def idle(self) -> int:
+        """Cores with no file to read."""
+        return max(self.cores - self.files, 0) if self.cores else 0
+
+    @property
+    def queued(self) -> int:
+        """Files waiting for a core to free up."""
+        return max(self.files - self.cores, 0) if self.cores else 0
+
+    def describe(self, table_name: str) -> str:
+        """Render the sizing as one line for the log.
+
+        Args:
+            table_name: Table the line is about.
+
+        Returns:
+            The file count, the cores, and how many idle or queue.
+        """
+        if not self.cores:
+            return f'{table_name}: {self.files} files, cluster size unknown'
+        if self.idle:
+            outcome = f'{self.idle} will idle'
+        elif self.queued:
+            outcome = f'{self.queued} files will queue'
+        else:
+            outcome = 'matched'
+        return f'{table_name}: {self.files} files, {self.cores} cores available — {outcome}'
+
+
+def cluster_sizing(file_count: int, worker_type: str, workers: int) -> Sizing:
     """Compare a table's file count to the cores the cluster will offer.
 
     Args:
-        table_name: Table the note is about.
         file_count: Objects matched for this table.
         worker_type: Glue worker type the job is configured with.
         workers: Total workers, one of which is the driver.
 
     Returns:
-        A one-line note for the log.
+        The file count beside the executor cores.
     """
-    cores = (workers - 1) * CORES_PER_WORKER.get(worker_type, 0)
-    if cores == 0:
-        return f'{table_name}: {file_count} files, cluster size unknown'
-    if file_count < cores:
-        return f'{table_name}: {file_count} files, {cores} cores available — {cores - file_count} will idle'
-    if file_count > cores:
-        return f'{table_name}: {file_count} files, {cores} cores available — files will queue'
-    return f'{table_name}: {file_count} files, {cores} cores available — matched'
+    return Sizing(files=file_count, cores=(workers - 1) * CORES_PER_WORKER.get(worker_type, 0))
 
 
 # ---------------------------------------------------------------- what Spark reads
@@ -340,9 +421,9 @@ def check_table(s3, bucket: str, table: schemas.Table) -> tuple[int, list[str]]:
 
     problems = []
     for key in keys:
-        mismatch = describe_mismatch(table.columns, read_header(s3, bucket, key))
+        mismatch = header_mismatch(table.columns, read_header(s3, bucket, key))
         if mismatch is not None:
-            indented = mismatch.replace('\n', '\n      ')
+            indented = mismatch.describe().replace('\n', '\n      ')
             problems.append(f'  {key}\n      {indented}')
     return len(keys), problems
 
@@ -372,7 +453,7 @@ def handler(event: dict, context: object) -> dict:
     report = []
     for table in schemas.TABLES.values():
         file_count, problems = check_table(s3, bucket, table)
-        log.info(sizing_note(table.name, file_count, worker_type, workers))
+        log.info(cluster_sizing(file_count, worker_type, workers).describe(table.name))
         if problems:
             report.append(f'{table.name} — edit schemas.{table.name.upper()}.columns\n' + '\n'.join(problems))
 

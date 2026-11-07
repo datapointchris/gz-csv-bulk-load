@@ -117,7 +117,7 @@ rest of the file. A 6 GB object and a 6 MB object cost the same. A header wider 
 fails with an error naming `schemas.HEADER_BYTES`, the setting to raise.
 
 The whole report is assembled before anything raises. A run with three broken tables is fixed in one
-pass rather than three. Each bad file is listed with its missing columns, its extra columns, or the
+pass rather than three. Each bad file is listed with its missing, extra and duplicated columns, or the
 first position where the order disagrees. A table matching no objects fails too, because a load of
 nothing that reports success looks exactly like a working run.
 

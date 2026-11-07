@@ -55,43 +55,42 @@ def test_parse_header_line_strips_a_byte_order_mark():
 
 
 def test_matching_header_has_no_mismatch():
-    assert check_headers.describe_mismatch(('a', 'b'), ('a', 'b')) is None
+    assert check_headers.header_mismatch(('a', 'b'), ('a', 'b')) is None
 
 
 def test_missing_column_is_named():
-    message = check_headers.describe_mismatch(('a', 'b', 'c'), ('a', 'c'))
-    assert 'missing: b' in message
+    assert check_headers.header_mismatch(('a', 'b', 'c'), ('a', 'c')) == check_headers.HeaderMismatch(missing=('b',))
 
 
 def test_extra_column_is_named():
-    message = check_headers.describe_mismatch(('a', 'b'), ('a', 'b', 'z'))
-    assert 'extra:   z' in message
+    assert check_headers.header_mismatch(('a', 'b'), ('a', 'b', 'z')) == check_headers.HeaderMismatch(extra=('z',))
 
 
 def test_missing_and_extra_are_reported_together():
     """One pass should show everything wrong with a file, not the first thing."""
-    message = check_headers.describe_mismatch(('a', 'b'), ('a', 'z'))
-    assert 'missing: b' in message
-    assert 'extra:   z' in message
+    mismatch = check_headers.header_mismatch(('a', 'b'), ('a', 'z'))
+    assert mismatch == check_headers.HeaderMismatch(missing=('b',), extra=('z',))
+
+
+def test_duplicated_column_is_named():
+    assert check_headers.header_mismatch(('a', 'b'), ('a', 'b', 'b')) == check_headers.HeaderMismatch(duplicated=('b',))
 
 
 def test_reordering_names_the_first_bad_position():
-    message = check_headers.describe_mismatch(('a', 'b', 'c'), ('a', 'c', 'b'))
-    assert "column 2 is 'c'" in message
-    assert "contract says 'b'" in message
+    mismatch = check_headers.header_mismatch(('a', 'b', 'c'), ('a', 'c', 'b'))
+    assert mismatch == check_headers.HeaderMismatch(reordered=check_headers.Reorder(position=2, found='c', expected='b'))
 
 
-def test_sizing_note_reports_idle_cores():
-    note = check_headers.sizing_note('orders', file_count=4, worker_type='G.2X', workers=3)
-    assert '4 files' in note
-    assert '16 cores' in note
-    assert '12 will idle' in note
+def test_sizing_counts_idle_cores():
+    sizing = check_headers.cluster_sizing(file_count=4, worker_type='G.2X', workers=3)
+    assert (sizing.cores, sizing.idle, sizing.queued) == (16, 12, 0)
 
 
-def test_sizing_note_reports_queueing():
-    note = check_headers.sizing_note('orders', file_count=40, worker_type='G.1X', workers=3)
-    assert 'files will queue' in note
+def test_sizing_counts_queued_files():
+    sizing = check_headers.cluster_sizing(file_count=40, worker_type='G.1X', workers=3)
+    assert (sizing.cores, sizing.idle, sizing.queued) == (8, 0, 32)
 
 
-def test_sizing_note_survives_an_unknown_worker_type():
-    assert 'unknown' in check_headers.sizing_note('orders', 4, 'G.99X', 3)
+def test_sizing_survives_an_unknown_worker_type():
+    sizing = check_headers.cluster_sizing(file_count=4, worker_type='G.99X', workers=3)
+    assert (sizing.cores, sizing.idle, sizing.queued) == (0, 0, 0)
