@@ -10,7 +10,8 @@ artifact_bucket = "example-deploy-artifacts"
 glue_worker_type = "G.2X"
 glue_workers     = 3
 
-# The number of tables in schemas.py loads them all at once. Fewer makes the rest wait for a slot.
+# Set this to the number of tables in schemas.py to load them all at once.
+# Fewer makes the rest wait for a slot.
 max_concurrent_loads = 4
 
 tags = {

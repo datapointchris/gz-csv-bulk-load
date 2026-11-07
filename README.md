@@ -229,9 +229,8 @@ The tests using the `spark` fixture need a JDK 17 on the path, matching what Glu
 one they error with `JAVA_GATEWAY_EXITED` rather than failing an assertion, and the rest pass. CI
 provides the JDK.
 
-Those Spark tests prove the reader options against real gzipped files. `escape`, `enforceSchema` and
-`mode` all fail silently when they are wrong. A misconfigured reader returns a DataFrame rather than
-raising, and a deployed run is a slow place to find that out.
+Those Spark tests read real gzipped files, one per reader option listed under `load_table.py` above,
+because a misconfigured reader returns a DataFrame rather than raising.
 
 ## What this deliberately does not do
 
@@ -248,8 +247,7 @@ Each of these was considered and left out. Putting one back should be a decision
   reads every object matching each table's prefix and pattern, and the preflight logs how many
   files that is.
 - **No shared library.** This repo has no runtime dependency at all. Lambda and Glue both ship
-  boto3, and Glue ships PySpark, so anything added would have to be packaged into both. Copied lines
-  beat a dependency someone has to go and read.
+  boto3, and Glue ships PySpark, so anything added would have to be packaged into both.
 - **No YAML.** The tables are Python, so a typo is an import error in an editor with autocomplete
   rather than a `KeyError` inside a Glue job.
 - **No per-table cluster sizing.** One shape, sized for the table with the most files. The waste on
