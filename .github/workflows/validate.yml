@@ -86,13 +86,20 @@ jobs:
           terraform_version: "1.10.5"
           terraform_wrapper: false
 
+      # Both steps run only where the root module carries tests, in the root or
+      # in tests/, which are the two places `terraform test` reads. With none it
+      # exits 0 reporting "0 passed, 0 failed", so a green step there would claim
+      # tests that never ran. A skipped step says so.
+      #
       # init without a backend: the tests need the providers resolved, and no
       # PR check should be touching real state.
-      - run: terraform init -backend=false
+      - name: terraform init
+        if: hashFiles('infra/*.tftest.hcl', 'infra/tests/*.tftest.hcl') != ''
+        run: terraform init -backend=false
 
-      # Unconditional: with no .tftest.hcl files this exits 0 reporting
-      # "0 passed, 0 failed", so a repo without tests is unaffected.
-      - run: terraform test
+      - name: terraform test
+        if: hashFiles('infra/*.tftest.hcl', 'infra/tests/*.tftest.hcl') != ''
+        run: terraform test
 
   hooks:
     name: "Pre-commit hooks"
